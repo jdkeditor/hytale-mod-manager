@@ -1,0 +1,13 @@
+# Ignorar arquivos de sistema e logs
+.DS_Store
+*.log
+watcher.log
+
+# Ignorar pastas de configuração pessoal geradas pelo script
+config.txt
+.config/
+Backups/
+Hytale_Backups/
+
+# Ignorar arquivos temporários
+tmp/
