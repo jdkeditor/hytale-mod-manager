@@ -53,25 +53,34 @@ process_file() {
     EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 
     case "$EXT_LOWER" in
-        zip)
-            # --- SMART UPDATE ---
-            # Verifica qual pasta esse zip vai criar
-            ROOT_FOLDER=$(unzip -qql "$FILE" | head -n1 | awk '{print $NF}' | cut -d/ -f1)
-            
-            # Se for uma pasta válida e já existir, remove a antiga (Clean Update)
-            if [ -n "$ROOT_FOLDER" ] && [ -d "$ROOT_FOLDER" ] && [ "$ROOT_FOLDER" != "." ]; then
-                log "🔄 Atualizando mod: $ROOT_FOLDER (Versão antiga removida)"
-                rm -rf "$ROOT_FOLDER"
-            fi
+           zip)
+                # --- FIX v1.0.3: CONTENÇÃO DE ARQUIVOS ---
+                # 1. Pega o nome do Mod limpo (ex: "MeuMod.zip" vira "MeuMod")
+                MOD_NAME=$(basename "$FILE" .zip)
+                
+                # Define onde vai instalar (Usa o diretório atual onde o script está operando)
+                TARGET_DIR="./$MOD_NAME"
 
-            if unzip -o -q "$FILE"; then
-                rm -f "$FILE"
-                log "✅ ZIP Instalado com sucesso: $FILE"
-                notify_user "Hytale Mod Manager" "Mod instalado: $FILE" "package-x-generic"
-            else
-                log "⚠️ Erro ao extrair ZIP: $FILE"
-            fi
-            ;;
+                # 2. Se a pasta já existe, apaga a velha pra atualizar (Clean Install)
+                if [ -d "$TARGET_DIR" ]; then
+                    log "🔄 Atualizando mod: $MOD_NAME (Versão antiga removida)"
+                    rm -rf "$TARGET_DIR"
+                fi
+
+                # 3. Cria a pasta "cofre" para o mod
+                mkdir -p "$TARGET_DIR"
+
+                # 4. O PULO DO GATO: Extrai com -d para DENTRO da pasta criada
+                if unzip -o -q "$FILE" -d "$TARGET_DIR"; then
+                    rm -f "$FILE"
+                    log "✅ ZIP Instalado e organizado: $MOD_NAME/"
+                    notify_user "Hytale Mod Manager" "Mod instalado: $MOD_NAME" "package-x-generic"
+                else
+                    log "⚠️ Erro ao extrair ZIP: $FILE"
+                    # Se falhar, apaga a pasta vazia pra não deixar lixo
+                    rm -rf "$TARGET_DIR"
+                fi
+                ;;
             
         jar)
             # JARs são apenas mantidos (Java Mods)
