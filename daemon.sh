@@ -53,35 +53,39 @@ process_file() {
     EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 
     case "$EXT_LOWER" in
-           zip)
-                # --- FIX v1.0.3: CONTENÇÃO DE ARQUIVOS ---
-                # 1. Pega o nome do Mod limpo (ex: "MeuMod.zip" vira "MeuMod")
-                MOD_NAME=$(basename "$FILE" .zip)
+      zip)
+                # --- OTIMIZAÇÃO v1.0.3: Extração em Pasta Dedicada ---
                 
-                # Define onde vai instalar (Usa o diretório atual onde o script está operando)
-                TARGET_DIR="./$MOD_NAME"
+                # 1. Pega o nome limpo do mod (Ex: "MeuMod.zip" -> "MeuMod")
+                MOD_NAME=$(basename "$FILE" .zip)
 
-                # 2. Se a pasta já existe, apaga a velha pra atualizar (Clean Install)
+                # 2. CORREÇÃO CRÍTICA: Define o caminho absoluto dentro da pasta do jogo
+                # (Certifique-se que a variável $MODS_DIR é a que guarda o caminho "/home/.../Hytale/mods")
+                TARGET_DIR="$MODS_DIR/$MOD_NAME"
+
+                log "📦 Processando ZIP: $MOD_NAME"
+
+                # 3. Clean Install: Se a pasta já existe, apaga para garantir uma atualização limpa
                 if [ -d "$TARGET_DIR" ]; then
-                    log "🔄 Atualizando mod: $MOD_NAME (Versão antiga removida)"
+                    log "🔄 Mod já existente. Atualizando..."
                     rm -rf "$TARGET_DIR"
                 fi
 
-                # 3. Cria a pasta "cofre" para o mod
+                # 4. Cria a "gaveta" (pasta) para o mod
                 mkdir -p "$TARGET_DIR"
 
-                # 4. O PULO DO GATO: Extrai com -d para DENTRO da pasta criada
+                # 5. Extrai o conteúdo PARA DENTRO da nova pasta (-d)
                 if unzip -o -q "$FILE" -d "$TARGET_DIR"; then
+                    # Sucesso: Apaga o zip original e avisa
                     rm -f "$FILE"
-                    log "✅ ZIP Instalado e organizado: $MOD_NAME/"
-                    notify_user "Hytale Mod Manager" "Mod instalado: $MOD_NAME" "package-x-generic"
+                    log "✅ Sucesso! Mod instalado em: $TARGET_DIR"
+                    notify_user "Hytale Mod Manager" "Mod Instalado: $MOD_NAME" "package-x-generic"
                 else
-                    log "⚠️ Erro ao extrair ZIP: $FILE"
-                    # Se falhar, apaga a pasta vazia pra não deixar lixo
+                    # Falha: Apaga a pasta vazia criada para não deixar lixo
+                    log "❌ Erro crítico ao extrair: $FILE"
                     rm -rf "$TARGET_DIR"
                 fi
-                ;;
-            
+                ;;            
         jar)
             # JARs são apenas mantidos (Java Mods)
             log "✅ JAR detectado e mantido: $FILE"
