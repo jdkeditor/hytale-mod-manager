@@ -1,125 +1,104 @@
 #!/bin/bash
 
 # ==============================================================================
-# 🤖 HYTALE DAEMON - BACKEND V1.0
+# ⚔️  HYTALE MOD MANAGER - DAEMON v2.0
 # ==============================================================================
 
-# Configurações
 CONFIG_DIR="$HOME/.config/hytale-mod-manager"
 CONFIG_FILE="$CONFIG_DIR/config.txt"
 LOG_FILE="$CONFIG_DIR/daemon.log"
 
-# Garante diretórios
 mkdir -p "$CONFIG_DIR"
 touch "$LOG_FILE"
 
-# Função de Log
-log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
+log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
 
-# Verifica Configuração
-if [ ! -f "$CONFIG_FILE" ]; then
-    log "❌ Erro: Configuração não encontrada."
-    exit 1
-fi
-
-WATCH_DIR=$(cat "$CONFIG_FILE")
-log "🟢 Daemon iniciado. Monitorando: $WATCH_DIR"
-
-# Função de Som e Notificação
 notify_user() {
-    TITLE="$1"
-    MSG="$2"
-    ICON="$3"
-    
-    # Toca som (tenta vários players comuns)
-    (paplay /usr/share/sounds/freedesktop/stereo/complete.oga || \
-     aplay /usr/share/sounds/alsa/Front_Center.wav) 2>/dev/null &
-     
-    # Envia notificação
+    local TITLE="$1" MSG="$2" ICON="${3:-package-x-generic}"
+    (paplay /usr/share/sounds/freedesktop/stereo/complete.oga \
+     || aplay /usr/share/sounds/alsa/Front_Center.wav) 2>/dev/null &
     notify-send "$TITLE" "$MSG" -i "$ICON" 2>/dev/null
 }
 
-process_file() {
-    FILE="$1"
-    # Delay de segurança para download terminar
-    sleep 1
-    
-    cd "$WATCH_DIR" || return
-    [ ! -f "$FILE" ] && return
+if [ ! -f "$CONFIG_FILE" ]; then
+    log "❌ Configuração não encontrada: $CONFIG_FILE"
+    exit 1
+fi
 
-    log "📦 Processando arquivo: $FILE"
-    
-    EXT="${FILE##*.}"
-    EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+WATCH_DIR=$(sed -n '1p' "$CONFIG_FILE" | tr -d '[:space:]')
+MODS_DIR=$(sed -n '2p'  "$CONFIG_FILE" | tr -d '[:space:]')
+MODS_DIR="${MODS_DIR:-$WATCH_DIR}"
 
-    case "$EXT_LOWER" in
-      zip)
-                # --- OTIMIZAÇÃO v1.0.3: Extração em Pasta Dedicada ---
-                
-                # 1. Pega o nome limpo do mod (Ex: "MeuMod.zip" -> "MeuMod")
-                MOD_NAME=$(basename "$FILE" .zip)
+if [ ! -d "$WATCH_DIR" ]; then
+    log "❌ Pasta monitorada não existe: $WATCH_DIR"
+    exit 1
+fi
 
-                # 2. CORREÇÃO CRÍTICA: Define o caminho absoluto dentro da pasta do jogo
-                # (Certifique-se que a variável $MODS_DIR é a que guarda o caminho "/home/.../Hytale/mods")
-                TARGET_DIR="$MODS_DIR/$MOD_NAME"
+mkdir -p "$MODS_DIR"
 
-                log "📦 Processando ZIP: $MOD_NAME"
+log "🟢 Daemon v2.0 iniciado."
+log "   📂 Monitorando : $WATCH_DIR"
+log "   📦 Instalando  : $MODS_DIR"
+log "👁️  Monitoramento ativo..."
 
-                # 3. Clean Install: Se a pasta já existe, apaga para garantir uma atualização limpa
-                if [ -d "$TARGET_DIR" ]; then
-                    log "🔄 Mod já existente. Atualizando..."
-                    rm -rf "$TARGET_DIR"
-                fi
-
-                # 4. Cria a "gaveta" (pasta) para o mod
-                mkdir -p "$TARGET_DIR"
-
-                # 5. Extrai o conteúdo PARA DENTRO da nova pasta (-d)
-                if unzip -o -q "$FILE" -d "$TARGET_DIR"; then
-                    # Sucesso: Apaga o zip original e avisa
-                    rm -f "$FILE"
-                    log "✅ Sucesso! Mod instalado em: $TARGET_DIR"
-                    notify_user "Hytale Mod Manager" "Mod Instalado: $MOD_NAME" "package-x-generic"
-                else
-                    # Falha: Apaga a pasta vazia criada para não deixar lixo
-                    log "❌ Erro crítico ao extrair: $FILE"
-                    rm -rf "$TARGET_DIR"
-                fi
-                ;;            
-        jar)
-            # JARs são apenas mantidos (Java Mods)
-            log "✅ JAR detectado e mantido: $FILE"
-            notify_user "Hytale Mod Manager" "Java Mod detectado: $FILE" "java"
-            ;;
-            
-        7z)
-            if command -v 7z &> /dev/null; then
-                # 7z não tem listagem simples igual unzip, extrai direto
-                if 7z x -y "$FILE" > /dev/null; then
-                    rm -f "$FILE"
-                    log "✅ 7z Instalado com sucesso: $FILE"
-                    notify_user "Hytale Mod Manager" "Mod 7z instalado: $FILE" "package-x-generic"
-                else
-                    log "⚠️ Erro ao extrair 7z: $FILE"
-                fi
-            else
-                log "❌ Erro: 'p7zip' não instalado para abrir .7z"
-            fi
-            ;;
-    esac
-}
-
-# Verifica inotify
-if ! command -v inotifywait &> /dev/null; then
+if ! command -v inotifywait &>/dev/null; then
     log "❌ FATAL: inotify-tools não encontrado."
     exit 1
 fi
 
-# Loop de Monitoramento
-# Monitora close_write (download terminou) e moved_to (arquivo movido para pasta)
-inotifywait -m -e close_write -e moved_to --format "%f" "$WATCH_DIR" | \
-while read FILENAME; do
-    if [[ "$FILENAME" =~ \.(zip|jar|7z)$ ]]; then
-        process_file "$FILENAME"
-    fi
+inotifywait -m -q -e close_write,moved_to --format '%f' "$WATCH_DIR" \
+| while IFS= read -r FILE; do
+
+    # Ignora temporários de download
+    [[ "$FILE" =~ \.(crdownload|part|tmp|download)$ ]] && continue
+
+    FULL_PATH="$WATCH_DIR/$FILE"
+    [ ! -f "$FULL_PATH" ] && continue
+
+    case "${FILE,,}" in
+        *.jar)
+            log "📦 JAR detectado: $FILE"
+            mv "$FULL_PATH" "$MODS_DIR/"
+            log "✅ Instalado: $FILE"
+            notify_user "Hytale Mod Manager" "✅ Mod instalado: $FILE"
+            ;;
+
+        *.zip)
+            log "📦 ZIP detectado: $FILE"
+            MOD_NAME="${FILE%.*}"
+            TARGET="$MODS_DIR/$MOD_NAME"
+            rm -rf "$TARGET"
+            mkdir -p "$TARGET"
+            if unzip -o -q "$FULL_PATH" -d "$TARGET"; then
+                rm -f "$FULL_PATH"
+                log "✅ Instalado: $MOD_NAME"
+                notify_user "Hytale Mod Manager" "✅ Mod instalado: $MOD_NAME"
+            else
+                rm -rf "$TARGET"
+                log "❌ Erro ao extrair: $FILE"
+                notify_user "Hytale Mod Manager" "❌ Erro ao instalar: $FILE" "dialog-error"
+            fi
+            ;;
+
+        *.7z)
+            if ! command -v 7z &>/dev/null; then
+                log "❌ p7zip não instalado. Rode: sudo apt install p7zip-full"
+                continue
+            fi
+            log "📦 7z detectado: $FILE"
+            MOD_NAME="${FILE%.*}"
+            TARGET="$MODS_DIR/$MOD_NAME"
+            rm -rf "$TARGET"
+            mkdir -p "$TARGET"
+            if 7z x -y -o"$TARGET" "$FULL_PATH" &>/dev/null; then
+                rm -f "$FULL_PATH"
+                log "✅ Instalado: $MOD_NAME"
+                notify_user "Hytale Mod Manager" "✅ Mod instalado: $MOD_NAME"
+            else
+                rm -rf "$TARGET"
+                log "❌ Erro ao extrair: $FILE"
+                notify_user "Hytale Mod Manager" "❌ Erro ao instalar: $FILE" "dialog-error"
+            fi
+            ;;
+    esac
 done
