@@ -49,7 +49,6 @@ fi
 inotifywait -m -q -e close_write,moved_to --format '%f' "$WATCH_DIR" \
 | while IFS= read -r FILE; do
 
-    # Ignora temporários de download
     [[ "$FILE" =~ \.(crdownload|part|tmp|download)$ ]] && continue
 
     FULL_PATH="$WATCH_DIR/$FILE"
@@ -82,7 +81,7 @@ inotifywait -m -q -e close_write,moved_to --format '%f' "$WATCH_DIR" \
 
         *.7z)
             if ! command -v 7z &>/dev/null; then
-                log "❌ p7zip não instalado. Rode: sudo apt install p7zip-full"
+                log "❌ p7zip não instalado. Rode: sudo pacman -S p7zip"
                 continue
             fi
             log "📦 7z detectado: $FILE"
